@@ -1,0 +1,50 @@
+## Process safety and terminal hygiene
+
+Use the `/process-guard` skill before running any terminal command that may start or control a long-running process.
+
+A command is long-running if its normal success state is to remain alive rather than exit. This includes dev servers, shell sessions, watchers, hot reloaders, HTTP/WebSocket/RPC services, workers, queue consumers, blockchain indexers, miners, trading bots, schedulers, daemons, Docker foreground services, Kubernetes log followers, and commands that stream indefinitely.
+
+Do not run long-running commands directly in the foreground. This applies across Node.js, Python, Rust, Go, Java, PHP, .NET, Docker, Kubernetes, shell scripts, and any other runtime.
+
+Use these rules:
+
+1. Finite commands must be run with a timeout.
+2. Long-running commands must be started as managed background processes.
+3. Managed processes must write logs under `.agent-run/logs/`.
+4. Managed processes must write PID files under `.agent-run/pids/`.
+5. Readiness must be checked with a health URL, TCP port, custom ready command, or log pattern.
+6. Before the final response, stop every process started during the task.
+7. Do not kill processes that were not started during the task unless explicitly instructed.
+8. If a process intentionally remains running, report its name, PID, port, log path, and exact stop command.
+
+Never run these unmanaged in a normal task:
+
+```bash
+npm run dev
+pnpm dev
+yarn dev
+next dev
+vite
+python app.py
+python manage.py runserver
+uvicorn app:app --reload
+flask run
+cargo run
+cargo watch -x run
+go run .
+air
+mvn spring-boot:run
+gradle bootRun
+dotnet run
+dotnet watch
+php artisan serve
+php artisan queue:work
+docker compose up
+kubectl logs -f
+tail -f
+bash
+powershell
+pwsh
+```
+
+When the process-guard skill is active, prefer `$CLAUDE_SKILL_DIR/scripts/...` for bundled scripts. Before final response, verify cleanup with the process-guard status or cleanup script.

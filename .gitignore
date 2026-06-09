@@ -1,0 +1,10 @@
+.agent-run/
+.codex-run/
+.agents/
+.claude/
+
+*.log
+
+.DS_Store
+Thumbs.db
+desktop.ini
