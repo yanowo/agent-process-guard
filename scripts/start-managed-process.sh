@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_common.sh"
+
 NAME=""
 COMMAND=""
 PORT=""
@@ -58,30 +61,26 @@ if [ -n "$PORT" ] && ! [[ "$PORT" =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
-RUN_DIR="${PROCESS_GUARD_RUN_DIR:-.agent-run}"
-LOG_DIR="$RUN_DIR/logs"
-PID_DIR="$RUN_DIR/pids"
-META_DIR="$RUN_DIR/meta"
 mkdir -p "$LOG_DIR" "$PID_DIR" "$META_DIR"
 
 LOG="$LOG_DIR/${NAME}.log"
 PIDFILE="$PID_DIR/${NAME}.pid"
 METAFILE="$META_DIR/${NAME}.env"
 
-is_alive() {
-  local pid="$1"
-  [ -n "$pid" ] || return 1
-  kill -0 "$pid" 2>/dev/null || return 1
-
-  if command -v ps >/dev/null 2>&1; then
-    local state
-    state="$(ps -o stat= -p "$pid" 2>/dev/null | tr -d ' ' || true)"
-    case "$state" in
-      Z*) return 1 ;;
-    esac
-  fi
-
-  return 0
+# Probe 127.0.0.1:port with a short-lived TCP connect (fallback when no CLI tool).
+_tcp_connect() {
+  python3 - "$1" "$2" <<'PY' >/dev/null 2>&1
+import socket, sys
+s = socket.socket()
+s.settimeout(float(sys.argv[2]))
+try:
+    s.connect(("127.0.0.1", int(sys.argv[1])))
+    sys.exit(0)
+except Exception:
+    sys.exit(1)
+finally:
+    s.close()
+PY
 }
 
 port_listening() {
@@ -93,19 +92,7 @@ port_listening() {
   elif command -v netstat >/dev/null 2>&1; then
     netstat -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "(^|:)${port}$"
   else
-    python3 - "$port" <<'PY' >/dev/null 2>&1
-import socket, sys
-port = int(sys.argv[1])
-s = socket.socket()
-s.settimeout(0.5)
-try:
-    s.connect(("127.0.0.1", port))
-    sys.exit(0)
-except Exception:
-    sys.exit(1)
-finally:
-    s.close()
-PY
+    _tcp_connect "$port" 0.5
   fi
 }
 
@@ -114,19 +101,7 @@ tcp_probe() {
   if command -v nc >/dev/null 2>&1; then
     nc -z 127.0.0.1 "$port" >/dev/null 2>&1
   else
-    python3 - "$port" <<'PY' >/dev/null 2>&1
-import socket, sys
-port = int(sys.argv[1])
-s = socket.socket()
-s.settimeout(1)
-try:
-    s.connect(("127.0.0.1", port))
-    sys.exit(0)
-except Exception:
-    sys.exit(1)
-finally:
-    s.close()
-PY
+    _tcp_connect "$port" 1
   fi
 }
 
@@ -144,30 +119,6 @@ except Exception:
     sys.exit(1)
 PY
   fi
-}
-
-kill_tree() {
-  local pid="$1"
-  [ -n "$pid" ] || return 0
-
-  # First try process group termination. start-managed-process uses setsid when available.
-  kill -TERM -"$pid" 2>/dev/null || true
-  kill -TERM "$pid" 2>/dev/null || true
-  sleep "$GRACE_SECONDS"
-
-  # Recursively stop children if process group termination was not enough.
-  if command -v pgrep >/dev/null 2>&1; then
-    local children
-    children="$(pgrep -P "$pid" 2>/dev/null || true)"
-    if [ -n "$children" ]; then
-      for child in $children; do
-        kill_tree "$child" || true
-      done
-    fi
-  fi
-
-  kill -KILL -"$pid" 2>/dev/null || true
-  kill -KILL "$pid" 2>/dev/null || true
 }
 
 if [ -f "$PIDFILE" ]; then
@@ -213,10 +164,9 @@ STARTED_AT=$STARTED_AT
 META
 
 has_readiness=0
-[ -n "$HEALTH_URL" ] && has_readiness=1
-[ -n "$PORT" ] && has_readiness=1
-[ -n "$READY_COMMAND" ] && has_readiness=1
-[ -n "$READY_LOG_PATTERN" ] && has_readiness=1
+if [ -n "$HEALTH_URL$PORT$READY_COMMAND$READY_LOG_PATTERN" ]; then
+  has_readiness=1
+fi
 
 fail_exited_before_readiness() {
   echo "Process '$NAME' exited before readiness. Last logs:" >&2
@@ -267,7 +217,7 @@ if [ "$has_readiness" -eq 1 ]; then
   if [ "$ready" -ne 1 ]; then
     echo "Process '$NAME' did not become ready within ${TIMEOUT_SECONDS}s. Last logs:" >&2
     tail -120 "$LOG" >&2 || true
-    kill_tree "$pid"
+    kill_tree "$pid" "$GRACE_SECONDS"
     rm -f "$PIDFILE" "$METAFILE"
     exit 1
   fi

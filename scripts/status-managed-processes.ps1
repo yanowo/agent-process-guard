@@ -1,4 +1,6 @@
-$RunDir = if ($env:PROCESS_GUARD_RUN_DIR) { $env:PROCESS_GUARD_RUN_DIR } else { ".agent-run" }
+. "$PSScriptRoot/_common.ps1"
+
+$RunDir = Get-PgRunDir
 $pidDir = "$RunDir/pids"
 $metaDir = "$RunDir/meta"
 

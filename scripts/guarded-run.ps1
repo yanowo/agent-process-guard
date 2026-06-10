@@ -5,7 +5,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$RunDir = if ($env:PROCESS_GUARD_RUN_DIR) { $env:PROCESS_GUARD_RUN_DIR } else { ".agent-run" }
+. "$PSScriptRoot/_common.ps1"
+$RunDir = Get-PgRunDir
 New-Item -ItemType Directory -Force -Path "$RunDir/logs" | Out-Null
 
 $tempPrefix = Join-Path ([System.IO.Path]::GetTempPath()) ("process-guard-" + [guid]::NewGuid().ToString("N"))
@@ -17,22 +18,6 @@ if ($LogName) {
   $stdoutLog = "$RunDir/logs/$LogName.once.out.log"
   $stderrLog = "$RunDir/logs/$LogName.once.err.log"
   $removeLogsAfterRun = $false
-}
-
-function Stop-Tree([int] $RootPid) {
-  try {
-    $children = Get-CimInstance Win32_Process -Filter "ParentProcessId=$RootPid" -ErrorAction SilentlyContinue
-    foreach ($child in $children) { Stop-Tree -RootPid ([int]$child.ProcessId) }
-  } catch {}
-  try {
-    $p = Get-Process -Id $RootPid -ErrorAction SilentlyContinue
-    if ($p) {
-      Stop-Process -Id $RootPid -ErrorAction SilentlyContinue
-      Start-Sleep -Seconds 5
-      $p = Get-Process -Id $RootPid -ErrorAction SilentlyContinue
-      if ($p) { Stop-Process -Id $RootPid -Force -ErrorAction SilentlyContinue }
-    }
-  } catch {}
 }
 
 $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command))

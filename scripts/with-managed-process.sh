@@ -17,6 +17,8 @@ USAGE
   exit 2
 fi
 
+# Everything before `--` is forwarded verbatim to start-managed-process.sh (the
+# single authority on its own flags); everything after `--` is the check command.
 while [ "$#" -gt 0 ]; do
   if [ "$1" = "--" ]; then
     shift
@@ -28,14 +30,6 @@ while [ "$#" -gt 0 ]; do
   fi
   START_ARGS+=("$1")
   shift
-  if [ "$#" -gt 0 ] && [ "${START_ARGS[-1]}" != "--help" ]; then
-    case "${START_ARGS[-1]}" in
-      --name|--command|--port|--health-url|--ready-command|--ready-log-pattern|--timeout|--cwd|--grace)
-        START_ARGS+=("$1")
-        shift
-        ;;
-    esac
-  fi
 done
 
 if [ -z "$NAME" ]; then

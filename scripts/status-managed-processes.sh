@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RUN_DIR="${PROCESS_GUARD_RUN_DIR:-.agent-run}"
-PID_DIR="$RUN_DIR/pids"
-META_DIR="$RUN_DIR/meta"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_common.sh"
 
 if [ ! -d "$PID_DIR" ]; then
   echo "No managed PID directory found"
@@ -17,17 +16,21 @@ for f in "$PID_DIR"/*.pid; do
   name="$(basename "$f" .pid)"
   pid="$(cat "$f" 2>/dev/null || true)"
   status="stopped"
-  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+  if is_alive "$pid"; then
     status="running"
   fi
-  log="$RUN_DIR/logs/${name}.log"
+  log="$LOG_DIR/${name}.log"
   port=""
   health=""
   meta="$META_DIR/${name}.env"
   if [ -f "$meta" ]; then
-    port="$(grep '^PORT=' "$meta" | sed 's/^PORT=//' || true)"
-    health="$(grep '^HEALTH_URL=' "$meta" | sed 's/^HEALTH_URL=//' || true)"
-    log="$(grep '^LOG=' "$meta" | sed 's/^LOG=//' || echo "$log")"
+    while IFS='=' read -r key value; do
+      case "$key" in
+        PORT) port="$value" ;;
+        HEALTH_URL) health="$value" ;;
+        LOG) log="$value" ;;
+      esac
+    done < "$meta"
   fi
   printf '%s\tPID=%s\t%s\tlog=%s' "$name" "${pid:-unknown}" "$status" "$log"
   [ -n "$port" ] && printf '\tport=%s' "$port"

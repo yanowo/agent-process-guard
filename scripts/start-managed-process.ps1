@@ -14,7 +14,9 @@ $ErrorActionPreference = "Stop"
 
 if ($Name -notmatch '^[A-Za-z0-9._-]+$') { throw "Invalid process name: $Name" }
 
-$RunDir = if ($env:PROCESS_GUARD_RUN_DIR) { $env:PROCESS_GUARD_RUN_DIR } else { ".agent-run" }
+. "$PSScriptRoot/_common.ps1"
+
+$RunDir = Get-PgRunDir
 New-Item -ItemType Directory -Force -Path "$RunDir/logs" | Out-Null
 New-Item -ItemType Directory -Force -Path "$RunDir/pids" | Out-Null
 New-Item -ItemType Directory -Force -Path "$RunDir/meta" | Out-Null
@@ -38,22 +40,6 @@ function Test-TcpPort([int] $PortToCheck) {
     $client.Close()
     return $false
   } catch { return $false }
-}
-
-function Stop-Tree([int] $RootPid) {
-  try {
-    $children = Get-CimInstance Win32_Process -Filter "ParentProcessId=$RootPid" -ErrorAction SilentlyContinue
-    foreach ($child in $children) { Stop-Tree -RootPid ([int]$child.ProcessId) }
-  } catch {}
-  try {
-    $p = Get-Process -Id $RootPid -ErrorAction SilentlyContinue
-    if ($p) {
-      Stop-Process -Id $RootPid -ErrorAction SilentlyContinue
-      Start-Sleep -Seconds $GraceSeconds
-      $p = Get-Process -Id $RootPid -ErrorAction SilentlyContinue
-      if ($p) { Stop-Process -Id $RootPid -Force -ErrorAction SilentlyContinue }
-    }
-  } catch {}
 }
 
 function Test-ManagedProcessAlive([System.Diagnostics.Process] $ManagedProcess) {
@@ -165,7 +151,7 @@ if ($hasReadiness) {
     [Console]::Error.WriteLine("Process '$Name' did not become ready within $TimeoutSeconds seconds. Last stdout/stderr logs follow.")
     Write-LogTailToStderr $stdoutLog
     Write-LogTailToStderr $stderrLog
-    Stop-Tree -RootPid $process.Id
+    Stop-Tree -RootPid $process.Id -GraceSeconds $GraceSeconds
     Remove-Item $pidPath, $metaPath -Force -ErrorAction SilentlyContinue
     exit 1
   }
