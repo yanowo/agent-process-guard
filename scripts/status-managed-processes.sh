@@ -16,21 +16,17 @@ for f in "$PID_DIR"/*.pid; do
   name="$(basename "$f" .pid)"
   pid="$(cat "$f" 2>/dev/null || true)"
   status="stopped"
-  if is_alive "$pid"; then
+  if pid_exists "$pid"; then
     status="running"
   fi
   log="$LOG_DIR/${name}.log"
   port=""
   health=""
   meta="$META_DIR/${name}.env"
-  if [ -f "$meta" ]; then
-    while IFS='=' read -r key value; do
-      case "$key" in
-        PORT) port="$value" ;;
-        HEALTH_URL) health="$value" ;;
-        LOG) log="$value" ;;
-      esac
-    done < "$meta"
+  if [ -r "$meta" ]; then
+    port="$(read_meta_field "$meta" PORT || true)"
+    health="$(read_meta_field "$meta" HEALTH_URL || true)"
+    log="$(read_meta_field "$meta" LOG || printf '%s\n' "$log")"
   fi
   printf '%s\tPID=%s\t%s\tlog=%s' "$name" "${pid:-unknown}" "$status" "$log"
   [ -n "$port" ] && printf '\tport=%s' "$port"

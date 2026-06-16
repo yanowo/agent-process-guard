@@ -2,11 +2,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_common.sh"
+
 START_ARGS=()
 CHECK_COMMAND=""
 NAME=""
+GRACE_SECONDS=5
 
-if [ "$#" -eq 0 ]; then
+usage() {
   cat >&2 <<'USAGE'
 Usage:
   with-managed-process.sh --name name --command 'long-running cmd' [readiness options] -- 'check command'
@@ -14,6 +17,18 @@ Usage:
 Example:
   with-managed-process.sh --name web --command 'pnpm dev --port 3000' --port 3000 -- 'curl -fsS http://127.0.0.1:3000'
 USAGE
+}
+
+need_value() {
+  if [ "$#" -lt 2 ]; then
+    echo "Missing value for $1" >&2
+    usage
+    exit 2
+  fi
+}
+
+if [ "$#" -eq 0 ]; then
+  usage
   exit 2
 fi
 
@@ -25,11 +40,27 @@ while [ "$#" -gt 0 ]; do
     CHECK_COMMAND="$*"
     break
   fi
-  if [ "$1" = "--name" ]; then
-    NAME="$2"
-  fi
-  START_ARGS+=("$1")
-  shift
+
+  case "$1" in
+    --name|--command|--port|--health-url|--ready-command|--ready-log-pattern|--timeout|--cwd|--grace)
+      need_value "$@"
+      if [ "$1" = "--name" ]; then
+        NAME="$2"
+      elif [ "$1" = "--grace" ]; then
+        GRACE_SECONDS="$2"
+      fi
+      START_ARGS+=("$1" "$2")
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      START_ARGS+=("$1")
+      shift
+      ;;
+  esac
 done
 
 if [ -z "$NAME" ]; then
@@ -43,7 +74,8 @@ if [ -z "$CHECK_COMMAND" ]; then
 fi
 
 cleanup() {
-  "$SCRIPT_DIR/stop-managed-process.sh" --name "$NAME" || true
+  trap - EXIT INT TERM
+  stop_managed_process "$NAME" "$GRACE_SECONDS" || true
 }
 trap cleanup EXIT INT TERM
 

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_common.sh"
+
 TIMEOUT_SECONDS=120
 LOG_NAME=""
 
@@ -15,10 +18,18 @@ Examples:
 USAGE
 }
 
+need_value() {
+  if [ "$#" -lt 2 ]; then
+    echo "Missing value for $1" >&2
+    usage
+    exit 2
+  fi
+}
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --timeout) TIMEOUT_SECONDS="$2"; shift 2 ;;
-    --log-name) LOG_NAME="$2"; shift 2 ;;
+    --timeout) need_value "$@"; TIMEOUT_SECONDS="$2"; shift 2 ;;
+    --log-name) need_value "$@"; LOG_NAME="$2"; shift 2 ;;
     --) shift; break ;;
     -h|--help) usage; exit 0 ;;
     *) break ;;
@@ -30,15 +41,14 @@ if [ "$#" -eq 0 ]; then
   exit 2
 fi
 
-RUN_DIR="${PROCESS_GUARD_RUN_DIR:-.agent-run}"
-mkdir -p "$RUN_DIR/logs"
+mkdir -p "$LOG_DIR"
 
 if [ -n "$LOG_NAME" ]; then
   if ! [[ "$LOG_NAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
     echo "Invalid log name: $LOG_NAME" >&2
     exit 2
   fi
-  LOG="$RUN_DIR/logs/${LOG_NAME}.once.log"
+  LOG="$LOG_DIR/${LOG_NAME}.once.log"
 else
   LOG=""
 fi
@@ -54,19 +64,22 @@ run_command() {
 if command -v timeout >/dev/null 2>&1; then
   run_command timeout --preserve-status --kill-after=5s "${TIMEOUT_SECONDS}s" "$@"
 else
+  RUN_CMD=("$@")
+  if command -v setsid >/dev/null 2>&1; then
+    RUN_CMD=(setsid "$@")
+  fi
+
   if [ -n "$LOG" ]; then
-    "$@" > >(tee "$LOG") 2> >(tee -a "$LOG" >&2) &
+    "${RUN_CMD[@]}" > >(tee "$LOG") 2> >(tee -a "$LOG" >&2) &
   else
-    "$@" &
+    "${RUN_CMD[@]}" &
   fi
   pid=$!
   (
     sleep "$TIMEOUT_SECONDS"
-    if kill -0 "$pid" 2>/dev/null; then
+    if pid_exists "$pid"; then
       echo "Command timed out after ${TIMEOUT_SECONDS}s. Terminating PID $pid" >&2
-      kill "$pid" 2>/dev/null || true
-      sleep 5
-      kill -9 "$pid" 2>/dev/null || true
+      kill_tree "$pid" 5
     fi
   ) &
   watcher=$!

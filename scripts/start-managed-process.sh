@@ -30,17 +30,25 @@ Options:
 USAGE
 }
 
+need_value() {
+  if [ "$#" -lt 2 ]; then
+    echo "Missing value for $1" >&2
+    usage
+    exit 2
+  fi
+}
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --name) NAME="$2"; shift 2 ;;
-    --command) COMMAND="$2"; shift 2 ;;
-    --port) PORT="$2"; shift 2 ;;
-    --health-url) HEALTH_URL="$2"; shift 2 ;;
-    --ready-command) READY_COMMAND="$2"; shift 2 ;;
-    --ready-log-pattern) READY_LOG_PATTERN="$2"; shift 2 ;;
-    --timeout) TIMEOUT_SECONDS="$2"; shift 2 ;;
-    --cwd) CWD="$2"; shift 2 ;;
-    --grace) GRACE_SECONDS="$2"; shift 2 ;;
+    --name) need_value "$@"; NAME="$2"; shift 2 ;;
+    --command) need_value "$@"; COMMAND="$2"; shift 2 ;;
+    --port) need_value "$@"; PORT="$2"; shift 2 ;;
+    --health-url) need_value "$@"; HEALTH_URL="$2"; shift 2 ;;
+    --ready-command) need_value "$@"; READY_COMMAND="$2"; shift 2 ;;
+    --ready-log-pattern) need_value "$@"; READY_LOG_PATTERN="$2"; shift 2 ;;
+    --timeout) need_value "$@"; TIMEOUT_SECONDS="$2"; shift 2 ;;
+    --cwd) need_value "$@"; CWD="$2"; shift 2 ;;
+    --grace) need_value "$@"; GRACE_SECONDS="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 2 ;;
   esac
@@ -123,7 +131,7 @@ PY
 
 if [ -f "$PIDFILE" ]; then
   old_pid="$(cat "$PIDFILE" 2>/dev/null || true)"
-  if is_alive "$old_pid"; then
+  if pid_exists "$old_pid"; then
     echo "Managed process '$NAME' already running with PID $old_pid" >&2
     echo "Use scripts/stop-managed-process.sh --name $NAME before starting it again." >&2
     exit 1

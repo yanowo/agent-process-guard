@@ -10,11 +10,17 @@ LOG_DIR="$RUN_DIR/logs"
 PID_DIR="$RUN_DIR/pids"
 META_DIR="$RUN_DIR/meta"
 
+# Does the given PID still exist from the kernel's point of view?
+pid_exists() {
+  local pid="$1"
+  [ -n "$pid" ] || return 1
+  kill -0 "$pid" 2>/dev/null
+}
+
 # Is the given PID a live, non-zombie process?
 is_alive() {
   local pid="$1"
-  [ -n "$pid" ] || return 1
-  kill -0 "$pid" 2>/dev/null || return 1
+  pid_exists "$pid" || return 1
 
   if command -v ps >/dev/null 2>&1; then
     local state
@@ -25,6 +31,30 @@ is_alive() {
   fi
 
   return 0
+}
+
+# Read a single top-level scalar from a managed-process meta file.
+# COMMAND may contain literal newlines, so keys after COMMAND are not reliable.
+read_meta_field() {
+  local meta="$1" wanted="$2" line key value
+  [ -r "$meta" ] || return 1
+
+  {
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in
+        COMMAND=*) break ;;
+      esac
+
+      key="${line%%=*}"
+      value="${line#*=}"
+      if [ "$key" = "$wanted" ]; then
+        printf '%s\n' "$value"
+        return 0
+      fi
+    done < "$meta"
+  } 2>/dev/null || return 1
+
+  return 1
 }
 
 # Terminate a process and its descendants: TERM the group, recurse into
@@ -69,7 +99,7 @@ stop_managed_process() {
     return 1
   fi
 
-  if is_alive "$pid"; then
+  if pid_exists "$pid"; then
     kill_tree "$pid" "$grace"
     sleep 1
     if is_alive "$pid"; then
