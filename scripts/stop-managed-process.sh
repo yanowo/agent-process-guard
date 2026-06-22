@@ -11,14 +11,6 @@ usage() {
   echo "Usage: stop-managed-process.sh --name name [--grace seconds]" >&2
 }
 
-need_value() {
-  if [ "$#" -lt 2 ]; then
-    echo "Missing value for $1" >&2
-    usage
-    exit 2
-  fi
-}
-
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --name) need_value "$@"; NAME="$2"; shift 2 ;;

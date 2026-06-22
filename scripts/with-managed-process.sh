@@ -19,14 +19,6 @@ Example:
 USAGE
 }
 
-need_value() {
-  if [ "$#" -lt 2 ]; then
-    echo "Missing value for $1" >&2
-    usage
-    exit 2
-  fi
-}
-
 if [ "$#" -eq 0 ]; then
   usage
   exit 2

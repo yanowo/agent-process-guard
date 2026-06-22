@@ -24,9 +24,18 @@ for f in "$PID_DIR"/*.pid; do
   health=""
   meta="$META_DIR/${name}.env"
   if [ -r "$meta" ]; then
-    port="$(read_meta_field "$meta" PORT || true)"
-    health="$(read_meta_field "$meta" HEALTH_URL || true)"
-    log="$(read_meta_field "$meta" LOG || printf '%s\n' "$log")"
+    # Single pass over the scalar fields. Stop at COMMAND, which is written last
+    # and may span multiple lines, so it can't pollute the fields above it.
+    {
+      while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+          COMMAND=*) break ;;
+          PORT=*) port="${line#*=}" ;;
+          HEALTH_URL=*) health="${line#*=}" ;;
+          LOG=*) log="${line#*=}" ;;
+        esac
+      done < "$meta"
+    } 2>/dev/null || true
   fi
   printf '%s\tPID=%s\t%s\tlog=%s' "$name" "${pid:-unknown}" "$status" "$log"
   [ -n "$port" ] && printf '\tport=%s' "$port"

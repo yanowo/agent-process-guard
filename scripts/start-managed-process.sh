@@ -30,14 +30,6 @@ Options:
 USAGE
 }
 
-need_value() {
-  if [ "$#" -lt 2 ]; then
-    echo "Missing value for $1" >&2
-    usage
-    exit 2
-  fi
-}
-
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --name) need_value "$@"; NAME="$2"; shift 2 ;;
@@ -160,15 +152,18 @@ pid=$!
 popd >/dev/null
 
 echo "$pid" > "$PIDFILE"
+# COMMAND is written last because it may contain literal newlines; keeping every
+# single-line scalar above it lets readers parse the file line-by-line and stop
+# at COMMAND without the format depending on any other field's position.
 cat > "$METAFILE" <<META
 NAME=$NAME
 PID=$pid
 PORT=$PORT
 HEALTH_URL=$HEALTH_URL
 LOG=$LOG
-COMMAND=$COMMAND
 CWD=$RUN_CWD
 STARTED_AT=$STARTED_AT
+COMMAND=$COMMAND
 META
 
 has_readiness=0

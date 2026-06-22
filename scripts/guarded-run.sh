@@ -18,14 +18,6 @@ Examples:
 USAGE
 }
 
-need_value() {
-  if [ "$#" -lt 2 ]; then
-    echo "Missing value for $1" >&2
-    usage
-    exit 2
-  fi
-}
-
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --timeout) need_value "$@"; TIMEOUT_SECONDS="$2"; shift 2 ;;

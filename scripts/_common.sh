@@ -10,6 +10,17 @@ LOG_DIR="$RUN_DIR/logs"
 PID_DIR="$RUN_DIR/pids"
 META_DIR="$RUN_DIR/meta"
 
+# Guard that a value-taking flag ("$1") was actually given an argument ("$2").
+# Relies on the sourcing script defining usage(), resolved by dynamic scoping
+# at call time.
+need_value() {
+  if [ "$#" -lt 2 ]; then
+    echo "Missing value for $1" >&2
+    usage
+    exit 2
+  fi
+}
+
 # Does the given PID still exist from the kernel's point of view?
 pid_exists() {
   local pid="$1"
@@ -31,30 +42,6 @@ is_alive() {
   fi
 
   return 0
-}
-
-# Read a single top-level scalar from a managed-process meta file.
-# COMMAND may contain literal newlines, so keys after COMMAND are not reliable.
-read_meta_field() {
-  local meta="$1" wanted="$2" line key value
-  [ -r "$meta" ] || return 1
-
-  {
-    while IFS= read -r line || [ -n "$line" ]; do
-      case "$line" in
-        COMMAND=*) break ;;
-      esac
-
-      key="${line%%=*}"
-      value="${line#*=}"
-      if [ "$key" = "$wanted" ]; then
-        printf '%s\n' "$value"
-        return 0
-      fi
-    done < "$meta"
-  } 2>/dev/null || return 1
-
-  return 1
 }
 
 # Terminate a process and its descendants: TERM the group, recurse into
